@@ -1,0 +1,2 @@
+pyscard>=2.0.12
+pycryptodomex>=3.22.0

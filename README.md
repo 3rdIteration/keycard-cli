@@ -21,6 +21,22 @@
 
 Download the binary for your platform from the [releases page](https://github.com/status-im/keycard-cli/releases) and rename the file to `keycard`, removing the platform specific suffix.
 
+## Python port (WIP)
+
+A Python port is available under `/tmp/workspace/3rdIteration/keycard-cli/python` and currently provides:
+
+* CLI entrypoint with `version`, `info`, and `shell`.
+* APDU helpers and card connection using `pyscard`.
+* Ethereum signed-message hashing helper using `pycryptodomex`.
+
+Install dependencies and run:
+
+```bash
+cd python
+pip install -r requirements.txt
+python keycard.py version
+```
+
 ## Continuous Integration
 
 Jenkins builds provide:

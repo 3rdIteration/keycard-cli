@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 import time
-from typing import Optional
-
-from smartcard.CardConnection import CardConnection
-from smartcard.Exceptions import CardConnectionException
-from smartcard.System import readers
+from typing import Any, Optional
 
 from .apdu import APDUResponse
 
 
 class CardSession:
-    def __init__(self, connection: CardConnection, reader_name: str) -> None:
+    def __init__(self, connection: Any, reader_name: str) -> None:
         self._connection = connection
         self.reader_name = reader_name
 
@@ -27,6 +23,10 @@ class CardSession:
 
 
 def connect_to_card(wait_seconds: Optional[int] = None) -> CardSession:
+    from smartcard.CardConnection import CardConnection
+    from smartcard.Exceptions import CardConnectionException
+    from smartcard.System import readers
+
     all_readers = readers()
     if not all_readers:
         raise RuntimeError("no smartcard reader found")

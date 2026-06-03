@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "keycard-cli-python"
+version = "0.1.0"
+description = "Python port of keycard-cli for Status Keycard applets"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "3rdIteration" }
+]
+dependencies = [
+  "pyscard>=2.0.12",
+  "pycryptodomex>=3.22.0",
+  "cryptography>=41.0.0"
+]
+
+[project.scripts]
+keycard = "keycard_cli.cli:main"
+
+[tool.setuptools]
+py-modules = ["keycard"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["keycard_cli*"]

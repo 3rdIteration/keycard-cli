@@ -1,2 +1,18 @@
 /build
 *.cap
+*.pyc
+
+# Python caches and bytecode
+__pycache__/
+*.pyo
+*.pyd
+
+# Python packaging/build artifacts
+*.egg-info/
+.eggs/
+dist/
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/

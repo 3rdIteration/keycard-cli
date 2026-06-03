@@ -100,6 +100,10 @@ INS_STORE_DATA = 0xE2
 
 P1_PAIRING_FIRST_STEP = 0x00
 P1_PAIRING_FINAL_STEP = 0x01
+P2_PAIRING_ANY = 0x00
+P2_PAIRING_EPHEMERAL = 0x01
+P2_PAIRING_PERSISTENT = 0x02
+PAIRING_INDEX_EPHEMERAL = 0xFF
 P1_GET_STATUS_APPLICATION = 0x00
 P1_GET_STATUS_KEY_PATH = 0x01
 P1_DERIVE_KEY_FROM_MASTER = 0x00
@@ -254,11 +258,21 @@ def _calculate_mac(meta: bytes, data: bytes, mac_key: bytes) -> bytes:
 
     meta is exactly 16 bytes; data is the encrypted payload (already block-aligned).
     A 16-byte ISO 7816-4 padding block is appended before MAC computation.
-    Returns the new 16-byte IV (last block of the CBC chain).
+    Returns the 16-byte command/response MAC.
     """
+    # Match keycard-go / keycard-qt behavior:
+    # 1) CBC-encrypt meta with zero IV.
+    # 2) CBC-encrypt padded data with IV = last(meta_cipher_block).
+    # 3) MAC = second-to-last block of encrypted padded data.
     padded = _append_padding(data, 16)
-    result = AES.new(mac_key, AES.MODE_CBC, iv=bytes(16)).encrypt(meta + padded)
-    return result[-16:]
+
+    meta_cipher = AES.new(mac_key, AES.MODE_CBC, iv=bytes(16)).encrypt(meta)
+    iv2 = meta_cipher[-16:]
+
+    data_cipher = AES.new(mac_key, AES.MODE_CBC, iv=iv2).encrypt(padded)
+    if len(data_cipher) < 32:
+        raise ValueError("encrypted data too short for MAC extraction")
+    return data_cipher[-32:-16]
 
 
 # ── ECDH on secp256k1 ─────────────────────────────────────────────────────────
@@ -672,9 +686,20 @@ class KeycardCommandSet:
 
     # ── PAIR ──────────────────────────────────────────────────────────────────
 
-    def pair(self, pairing_pass: str) -> PairingInfo:
+    def pair(self, pairing_pass: str, pair_mode: int = P2_PAIRING_EPHEMERAL) -> PairingInfo:
+        """Run PAIR handshake and return pairing info.
+
+        pair_mode values:
+          - P2_PAIRING_ANY (0x00)
+          - P2_PAIRING_EPHEMERAL (0x01) [default]
+          - P2_PAIRING_PERSISTENT (0x02)
+
+        Pair mode is strict: this method does not silently downgrade to
+        P2_PAIRING_ANY because that could unexpectedly allocate persistent
+        slots when free slots exist.
+        """
         challenge = os.urandom(32)
-        resp = _transmit(self._session, CLA_GP, INS_PAIR, P1_PAIRING_FIRST_STEP, 0, challenge)
+        resp = _transmit(self._session, CLA_GP, INS_PAIR, P1_PAIRING_FIRST_STEP, pair_mode, challenge)
         if resp.sw == SW_NO_PAIRING_SLOTS:
             raise RuntimeError("no available pairing slots")
         _check_ok(resp)
@@ -685,7 +710,7 @@ class KeycardCommandSet:
 
         h = SHA256.new()
         h.update(secret_hash + card_challenge)
-        resp2 = _transmit(self._session, CLA_GP, INS_PAIR, P1_PAIRING_FINAL_STEP, 0, h.digest())
+        resp2 = _transmit(self._session, CLA_GP, INS_PAIR, P1_PAIRING_FINAL_STEP, pair_mode, h.digest())
         _check_ok(resp2)
 
         h2 = SHA256.new()
@@ -829,10 +854,18 @@ class KeycardCommandSet:
 
     # ── SIGN ──────────────────────────────────────────────────────────────────
 
+    def _send_sign_compatible(self, p1: int, data: bytes) -> APDUResponse:
+        # Newer applets support P2=1 (recoverable signatures).
+        resp = self._sc.send(CLA_GP, INS_SIGN, p1, 1, data)
+        # Older applets reject P2=1 with SW 0x6A81; retry in legacy mode.
+        if resp.sw == 0x6A81:
+            resp = self._sc.send(CLA_GP, INS_SIGN, p1, 0, data)
+        return resp
+
     def sign(self, data: bytes) -> Signature:
         if len(data) != 32:
             raise ValueError("data must be 32 bytes")
-        resp = self._sc.send(CLA_GP, INS_SIGN, P1_SIGN_CURRENT_KEY, 1, data)
+        resp = self._send_sign_compatible(P1_SIGN_CURRENT_KEY, data)
         _check_ok(resp)
         return _parse_signature(data, resp.data)
 
@@ -840,15 +873,14 @@ class KeycardCommandSet:
         if len(data) != 32:
             raise ValueError("data must be 32 bytes")
         _, encoded_path = _encode_path(path)
-        resp = self._sc.send(CLA_GP, INS_SIGN, P1_SIGN_DERIVE, 1,
-                             data + encoded_path)
+        resp = self._send_sign_compatible(P1_SIGN_DERIVE, data + encoded_path)
         _check_ok(resp)
         return _parse_signature(data, resp.data)
 
     def sign_pinless(self, data: bytes) -> Signature:
         if len(data) != 32:
             raise ValueError("data must be 32 bytes")
-        resp = self._sc.send(CLA_GP, INS_SIGN, P1_SIGN_PINLESS, 1, data)
+        resp = self._send_sign_compatible(P1_SIGN_PINLESS, data)
         _check_ok(resp)
         return _parse_signature(data, resp.data)
 
@@ -920,6 +952,8 @@ class CashCommandSet:
         if len(data) != 32:
             raise ValueError("data must be 32 bytes")
         resp = _transmit(self._session, CLA_GP, INS_SIGN, P1_SIGN_CURRENT_KEY, 1, data)
+        if resp.sw == 0x6A81:
+            resp = _transmit(self._session, CLA_GP, INS_SIGN, P1_SIGN_CURRENT_KEY, 0, data)
         _check_ok(resp)
         return _parse_signature(data, resp.data)
 

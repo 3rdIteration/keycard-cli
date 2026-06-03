@@ -15,6 +15,9 @@ from .eth_tx import encode_signed_transaction, hash_transaction
 from .keycard_proto import (
     CashCommandSet,
     KeycardCommandSet,
+    P2_PAIRING_ANY,
+    P2_PAIRING_EPHEMERAL,
+    P2_PAIRING_PERSISTENT,
     WrongPINError,
     eth_address_from_pub,
 )
@@ -217,10 +220,23 @@ class Shell:
         self._pin, self._puk, self._pairing_pass = args[0], args[1], args[2]
 
     def _keycard_pair(self, args: list[str]) -> None:
-        self._require_args(args, 0)
+        self._require_args(args, 0, 1)
         if not self._pairing_pass:
             raise ValueError("pairing password not set; use keycard-set-secrets first")
-        info = self._kcs.pair(self._pairing_pass)
+
+        pair_mode = P2_PAIRING_EPHEMERAL
+        if len(args) == 1:
+            mode = args[0].strip().lower()
+            mode_map = {
+                "ephemeral": P2_PAIRING_EPHEMERAL,
+                "persistent": P2_PAIRING_PERSISTENT,
+                "any": P2_PAIRING_ANY,
+            }
+            if mode not in mode_map:
+                raise ValueError("pair mode must be one of: ephemeral, persistent, any")
+            pair_mode = mode_map[mode]
+
+        info = self._kcs.pair(self._pairing_pass, pair_mode=pair_mode)
         print(f"PAIRING KEY: {info.key.hex()}")
         print(f"PAIRING INDEX: {info.index}")
         print()

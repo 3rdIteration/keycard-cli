@@ -32,12 +32,54 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+Install as a local module for reuse by other Python tools:
+
+```bash
+cd /tmp/workspace/3rdIteration/keycard-cli/python
+pip install -e .
+```
+
+This exposes:
+
+- Python package: `keycard_cli`
+- Console entrypoint: `keycard`
+
+## pysatochip-style compatibility
+
+This folder now includes a compatibility adapter aimed at SeedSigner-side
+backend abstraction:
+
+- Module: `keycard_cli.pysatochip_compat`
+- Class: `KeycardCompatConnector`
+
+See `PYSATOCHIP_COMPAT.md` for the API mapping and integration notes.
+
+## Pairing key/index persistence (important)
+
+Keycard secure operations need pairing information (`pairing_key`,
+`pairing_index`).
+
+By default, this implementation uses ephemeral pairing when creating a fresh
+pairing (`keycard-pair` in CLI, `pair_mode="ephemeral"` in compat adapter).
+Ephemeral pairing does not consume persistent card slots.
+
+Persistent pairing mode is still available and uses card pairing slots.
+
+For stateless clients, ephemeral pairing is typically the best default.
+If persistent pairing is used, persist pairing data externally (keyed by card
+`instance_uid`) and reapply it each session.
+
+If persistent slots are exhausted, new persistent pairing attempts fail, but
+existing saved pairings can still be used.
+
 ## Quick start
 
 Run commands with:
 
 ```bash
 python keycard.py <command>
+# or, once installed:
+keycard <command>
 ```
 
 Available top-level commands:
